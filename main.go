@@ -7,9 +7,10 @@ import (
 )
 
 type Server struct {
-	Host string
-	Port string
-	Name string
+	Host   string
+	Port   string
+	Name   string
+	InUsed bool
 }
 
 type DownstreamRequest struct {
@@ -25,28 +26,31 @@ type DownstreamRequest struct {
 func main() {
 	targets := []Server{
 		{
-			Host: "http://localhost",
-			Port: "9000",
-			Name: "Host 1",
+			Host:   "http://localhost",
+			Port:   "9000",
+			Name:   "Host 1",
+			InUsed: false,
 		},
 		{
-			Host: "http://localhost",
-			Port: "9001",
-			Name: "Host 2",
+			Host:   "http://localhost",
+			Port:   "9001",
+			Name:   "Host 2",
+			InUsed: false,
+		},
+		{
+			Host:   "http://localhost",
+			Port:   "9002",
+			Name:   "Host 3",
+			InUsed: false,
 		},
 	}
 
-	httpClient := &http.Client{}
-
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// Just printing a dummy targets
-		for _, target := range targets {
-			fmt.Println(target.Host + ":" + target.Port)
-		}
-
+		httpClient := &http.Client{}
 		req := extractDownstreamRequest(r)
-		// TODO: use algorithm to pickup the downstream target.
-		url := fmt.Sprintf("%s:%s", targets[0].Host, targets[0].Port)
+		target := getTarget(targets)
+		fmt.Printf("[INFO] starting hit the target of %s:%s", target.Host, target.Port)
+		url := fmt.Sprintf("%s:%s", target.Host, target.Port)
 		httpRequest, err := http.NewRequest(req.Method, url, nil)
 		if err != nil {
 			fmt.Println(err.Error())
@@ -69,7 +73,59 @@ func main() {
 		w.Write(byteResponse)
 	})
 
-	http.ListenAndServe(":3000", nil)
+	if err := http.ListenAndServe(":3000", nil); err != nil {
+		panic(err)
+	}
+}
+
+func getTarget(servers []Server) Server {
+	if len(servers) == 1 {
+		return servers[0]
+	}
+
+	// a, b, c
+	// if all in clear state, mark a as inUsed, return b
+
+	// a (used), b, c
+	// if a in used, go to next
+	// if b is unused, mark b as inUsed, return b
+
+	// a (used), b (used), c
+	// if a is used, go to next
+	// if b is used, go to next
+	// if c is unused, mark c as inUsed, check if c is the end of registered server, cleanup the previous servers
+
+	var usedIndex int
+	for index, server := range servers {
+		// If reaches the end of registered servers
+		if server.InUsed && index == len(servers)-1 {
+			cleanupServers(servers)
+
+			// Mark initial registered server to inUsed
+			servers[0].InUsed = true
+			return servers[0]
+		}
+
+		// Move to the next registered server if accessed indexed server is in use
+		if server.InUsed {
+			continue
+		}
+
+		usedIndex = index
+		break
+	}
+
+	fmt.Println(usedIndex)
+
+	servers[usedIndex].InUsed = true
+	return servers[usedIndex]
+}
+
+func cleanupServers(servers []Server) {
+	for index, server := range servers {
+		servers[index].InUsed = false
+		servers[index].Host = server.Host
+	}
 }
 
 func extractDownstreamRequest(r *http.Request) DownstreamRequest {
