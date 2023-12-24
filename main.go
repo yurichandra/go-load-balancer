@@ -7,10 +7,11 @@ import (
 )
 
 type Server struct {
-	Host   string
-	Port   string
-	Name   string
-	InUsed bool
+	Host     string
+	Port     string
+	Name     string
+	HitCount int
+	InUsed   bool
 }
 
 type DownstreamRequest struct {
@@ -26,22 +27,25 @@ type DownstreamRequest struct {
 func main() {
 	targets := []Server{
 		{
-			Host:   "http://localhost",
-			Port:   "9000",
-			Name:   "Host 1",
-			InUsed: false,
+			Host:     "http://localhost",
+			Port:     "9000",
+			Name:     "Host 1",
+			InUsed:   false,
+			HitCount: 0,
 		},
 		{
-			Host:   "http://localhost",
-			Port:   "9001",
-			Name:   "Host 2",
-			InUsed: false,
+			Host:     "http://localhost",
+			Port:     "9001",
+			Name:     "Host 2",
+			InUsed:   false,
+			HitCount: 0,
 		},
 		{
-			Host:   "http://localhost",
-			Port:   "9002",
-			Name:   "Host 3",
-			InUsed: false,
+			Host:     "http://localhost",
+			Port:     "9002",
+			Name:     "Host 3",
+			InUsed:   false,
+			HitCount: 0,
 		},
 	}
 
@@ -104,6 +108,7 @@ func getTarget(servers []Server) Server {
 
 			// Mark initial registered server to inUsed
 			servers[0].InUsed = true
+			servers[0].HitCount++
 			return servers[0]
 		}
 
@@ -116,8 +121,7 @@ func getTarget(servers []Server) Server {
 		break
 	}
 
-	fmt.Println(usedIndex)
-
+	servers[usedIndex].HitCount++
 	servers[usedIndex].InUsed = true
 	return servers[usedIndex]
 }
