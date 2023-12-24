@@ -57,20 +57,23 @@ func main() {
 		url := fmt.Sprintf("%s:%s", target.Host, target.Port)
 		httpRequest, err := http.NewRequest(req.Method, url, nil)
 		if err != nil {
-			fmt.Println(err.Error())
+			w.Write([]byte(err.Error()))
+			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 
 		response, err := httpClient.Do(httpRequest)
 		if err != nil {
-			fmt.Println(err.Error())
+			w.Write([]byte(err.Error()))
+			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 		defer response.Body.Close()
 
 		byteResponse, err := io.ReadAll(response.Body)
 		if err != nil {
-			fmt.Println(err.Error())
+			w.Write([]byte(err.Error()))
+			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 
