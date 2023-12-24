@@ -30,6 +30,10 @@ func main() {
 		w.Write([]byte("hello from downstream server"))
 	})
 
+	http.HandleFunc("/healthcheck", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("OK!"))
+	})
+
 	fmt.Printf("start to listen on port %s\n", port[1])
 	if err := http.ListenAndServe(fmt.Sprintf(":%s", port[1]), nil); err != nil {
 		fmt.Println(err.Error())

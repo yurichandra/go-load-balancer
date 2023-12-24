@@ -1,9 +1,14 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"log/slog"
+
 	"net/http"
+	"syscall"
+	"time"
 )
 
 type Server struct {
@@ -12,6 +17,7 @@ type Server struct {
 	Name     string
 	HitCount int
 	InUsed   bool
+	Active   bool
 }
 
 type DownstreamRequest struct {
@@ -24,6 +30,8 @@ type DownstreamRequest struct {
 	Body        []byte
 }
 
+var ErrNoActiveServer = errors.New("no active server available")
+
 func main() {
 	targets := []Server{
 		{
@@ -31,6 +39,7 @@ func main() {
 			Port:     "9000",
 			Name:     "Host 1",
 			InUsed:   false,
+			Active:   true,
 			HitCount: 0,
 		},
 		{
@@ -38,6 +47,7 @@ func main() {
 			Port:     "9001",
 			Name:     "Host 2",
 			InUsed:   false,
+			Active:   true,
 			HitCount: 0,
 		},
 		{
@@ -45,15 +55,34 @@ func main() {
 			Port:     "9002",
 			Name:     "Host 3",
 			InUsed:   false,
+			Active:   true,
 			HitCount: 0,
 		},
 	}
 
+	go func() {
+		for range time.Tick(10 * time.Second) {
+			handleHealthcheck(targets)
+		}
+	}()
+
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		httpClient := &http.Client{}
 		req := extractDownstreamRequest(r)
-		target := getTarget(targets)
-		fmt.Printf("[INFO] starting hit the target of %s:%s\n", target.Host, target.Port)
+		target, err := getTarget(targets)
+		if err != nil {
+			if errors.Is(err, ErrNoActiveServer) {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				w.Write([]byte("no service available"))
+				return
+			}
+
+			w.Write([]byte(err.Error()))
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		slog.Info("starting hit the target", "host", target.Host, "port", target.Port)
 		url := fmt.Sprintf("%s:%s", target.Host, target.Port)
 		httpRequest, err := http.NewRequest(req.Method, url, nil)
 		if err != nil {
@@ -77,6 +106,7 @@ func main() {
 			return
 		}
 
+		slog.Info("hit the target completed", "host", target.Host, "port", target.Port)
 		w.Write(byteResponse)
 	})
 
@@ -85,9 +115,79 @@ func main() {
 	}
 }
 
-func getTarget(servers []Server) Server {
-	if len(servers) == 1 {
-		return servers[0]
+func handleHealthcheck(servers []Server) {
+	for index, server := range servers {
+		httpClient := &http.Client{
+			Timeout: 3 * time.Second,
+		}
+
+		slog.Info(
+			"starting hit the target for healtcheck",
+			"host",
+			servers[index].Host,
+			"port",
+			servers[index].Port,
+		)
+		url := fmt.Sprintf("%s:%s/healtcheck", server.Host, server.Port)
+		httpRequest, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			slog.Error("error occured", "error", err.Error())
+			return
+		}
+
+		response, err := httpClient.Do(httpRequest)
+		if err != nil {
+			if errors.Is(err, syscall.ECONNREFUSED) {
+				servers[index].Active = false
+
+				slog.Info(
+					"healtcheck request completed",
+					"host",
+					servers[index].Host,
+					"port",
+					servers[index].Port,
+					"active",
+					servers[index].Active,
+				)
+
+				continue
+			}
+
+			servers[index].Active = false
+			slog.Error("error occured", "error", err.Error())
+			return
+		}
+		defer response.Body.Close()
+
+		_, err = io.ReadAll(response.Body)
+		if err != nil {
+			slog.Error("error occured", "error", err.Error())
+			return
+		}
+
+		if response.StatusCode != http.StatusOK {
+			servers[index].Active = false
+		} else {
+			servers[index].Active = true
+		}
+
+		slog.Info(
+			"healtcheck request completed",
+			"host",
+			servers[index].Host,
+			"port",
+			servers[index].Port,
+			"active",
+			servers[index].Active,
+		)
+	}
+}
+
+func getTarget(servers []Server) (Server, error) {
+	if len(servers) == 1 && servers[0].Active {
+		return servers[0], nil
+	} else if len(servers) == 1 && !servers[0].Active {
+		return Server{}, ErrNoActiveServer
 	}
 
 	// a, b, c
@@ -104,15 +204,24 @@ func getTarget(servers []Server) Server {
 
 	var usedIndex int
 	for index, server := range servers {
+		// If last registered server is not active, try to fallback to the first server.
+		if !server.Active && index == len(servers)-1 {
+			resetInUsedFlag(servers)
+			// Mark initial registered server to inUsed
+			servers[0].InUsed = true
+			servers[0].HitCount++
+			return servers[0], nil
+		}
+
 		// If reaches the end of registered servers
 		if server.InUsed && index == len(servers)-1 {
 			// clean up previous servers state
-			cleanupServers(servers)
+			resetInUsedFlag(servers)
 
 			// Mark initial registered server to inUsed
 			servers[0].InUsed = true
 			servers[0].HitCount++
-			return servers[0]
+			return servers[0], nil
 		}
 
 		// Move to the next registered server if accessed indexed server is in use
@@ -126,12 +235,14 @@ func getTarget(servers []Server) Server {
 
 	servers[usedIndex].HitCount++
 	servers[usedIndex].InUsed = true
-	return servers[usedIndex]
+	return servers[usedIndex], nil
 }
 
-func cleanupServers(servers []Server) {
+func resetInUsedFlag(servers []Server) {
 	for index, server := range servers {
 		servers[index].InUsed = false
+
+		// Just for the sake of accessing server
 		servers[index].Host = server.Host
 	}
 }
