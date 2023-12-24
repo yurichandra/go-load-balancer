@@ -49,7 +49,7 @@ func main() {
 		httpClient := &http.Client{}
 		req := extractDownstreamRequest(r)
 		target := getTarget(targets)
-		fmt.Printf("[INFO] starting hit the target of %s:%s", target.Host, target.Port)
+		fmt.Printf("[INFO] starting hit the target of %s:%s\n", target.Host, target.Port)
 		url := fmt.Sprintf("%s:%s", target.Host, target.Port)
 		httpRequest, err := http.NewRequest(req.Method, url, nil)
 		if err != nil {
@@ -99,6 +99,7 @@ func getTarget(servers []Server) Server {
 	for index, server := range servers {
 		// If reaches the end of registered servers
 		if server.InUsed && index == len(servers)-1 {
+			// clean up previous servers state
 			cleanupServers(servers)
 
 			// Mark initial registered server to inUsed
