@@ -2,14 +2,15 @@
 
 Go load balancer is a load balancer written in Golang. Inspired by https://codingchallenges.fyi/challenges/challenge-load-balancer
 
-# Plan
+## Plan
 
-I split this project into a roadmap and split the road map by section which I should work on.
+I wanted to have such a roadmap to declare this project to be finished. Within the roadmap, I break down into multiple parts that each of part will consist of functionality to work on the project.
 
 ### Roadmap
-- I. Basic functionality
-    [] Able to load balance the traffic to the backend server using round-robin algorithm & include its concurrency.
-    [] Able to perform regular healthcheck to the backend server.
-- II. Advanced functionality
-    [] Able to configure the load balancer using multiple of algorithms option.
-    [] Able to configure the load balancer using .yaml file.
+**I. Basic functionality**
+    - [ ] Able to load balance the traffic to the backend server using round-robin algorithm.
+    - [ ] Able to perform regular healthcheck to the backend server.
+    - [ ] Able to handle concurrency to pick a server.
+**II. Advanced functionality**
+    - [ ] Able to configure the load balancer using multiple of algorithms option.
+    - [ ] Able to configure the load balancer using .yaml file.
